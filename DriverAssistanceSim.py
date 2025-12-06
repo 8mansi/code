@@ -3,6 +3,7 @@ import pybullet_data
 import torch
 import numpy as np
 import os
+import time
 import math
 import matplotlib.pyplot as plt
 from PPO import PPOAgent
@@ -49,12 +50,6 @@ class DriverAssistanceSim:
         p.setRealTimeSimulation(0)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-        # Suppress warnings
-        p.setPhysicsEngineParameter(enableFileCaching=0)
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
-        p.setPhysicsEngineParameter(enableConeFriction=0)
-
-
     def initialize_road(self):
         self.road_id = p.loadURDF("plane.urdf")
         self.left_boundary  = self.lane_width - (self.offset * 6)
@@ -80,14 +75,15 @@ class DriverAssistanceSim:
         self.robot_id = p.loadURDF(robot_path, self.robot_start_pos, self.robot_start_orientation, globalScaling=1.0)  
         self.wheel_joints = [2, 3, 4, 5] 
     
+    # Disconnects simulation
     def disconnect_environmnent(self):
         p.disconnect()
 
     def set_robot_wheel_velocities(self, linear_vel, angular_vel):
-        WHEEL_DISTANCE = 0.55   # metres (left-right wheel separation)
+        WHEEL_DISTANCE = 0.55   # left-right wheel separation
         MAX_FORCE = 200
 
-        # Convert cmd_vel → wheel velocities
+        # Converting to wheel velocities
         left_vel  = linear_vel - (angular_vel * WHEEL_DISTANCE / 2)
         right_vel = linear_vel + (angular_vel * WHEEL_DISTANCE / 2)
 
@@ -177,6 +173,7 @@ class DriverAssistanceSim:
         )
         
     def move_cars(self):
+        # Updates the positions of all the cars to simulate traffic.
         for car in self.cars:
             cid = car['id']
             pos, orn = p.getBasePositionAndOrientation(cid)
@@ -359,6 +356,7 @@ class DriverAssistanceSim:
         globals()['debug_line_ids'] = debug_ids
         return distances[0], distances[1], distances[2], distances[3]
 
+    # Casts ray around the robot to detect obstacles and returns the closest distances.
     def beam_sensor(self, robot_pos, z_offset=0.1, max_range=5):
         _, orn = p.getBasePositionAndOrientation(self.robot_id)
         yaw = p.getEulerFromQuaternion(orn)[2]
@@ -615,6 +613,10 @@ class DriverAssistanceSim:
             for step in range(self.num_steps):
                 pos, _ = p.getBasePositionAndOrientation(self.robot_id)
                 robot_pos = [pos[0], pos[1], pos[2]]
+                # if step % 100 == 0 and step > 0:
+                #     self.spawn_cars(2)
+                #     p.stepSimulation()
+                #     time.sleep(0.01) 
 
                 # Step 1. Get state from environment
                 state = self.get_state(robot_pos)
@@ -627,7 +629,7 @@ class DriverAssistanceSim:
                 if beam > 0.6:
                     self.danger_points.append((robot_pos[0], robot_pos[1], action))
 
-                # Map actions to wheel speeds
+                # Applies the chosen action
                 if action == 0: # go straight 
                     self.set_robot_wheel_velocities(4, reset_angle)
                     reset_angle = 0  # reset angle for straight
@@ -670,6 +672,7 @@ class DriverAssistanceSim:
                 # Step 4. Store (s, a, logprob, r, done) in PPO memory
                 agent.remember(state, action, logprob, reward, done)
 
+                # Termination check
                 if done:
                     agent.remember(state, action, logprob, -20.0, True)
                     terminal_step = step

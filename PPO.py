@@ -78,7 +78,6 @@ class PPOAgent:
         self.last_action = None
         self.memory = {"states": [], "actions": [], "logprobs": [], "rewards": [], "dones": []}
 
-    # ---------- action selection ----------
     def act(self, state):
         state_t = torch.FloatTensor(state).unsqueeze(0) 
         logits, _ = self.model(state_t)          
@@ -118,7 +117,6 @@ class PPOAgent:
         self.memory["dones"].append(bool(d))
         self.last_action = a
 
-    # ---------- PPO update ----------
     def train(self, force=False, entropy_coef=None):
         if entropy_coef is None:
             entropy_coef = self.entropy_coef
@@ -197,8 +195,6 @@ class PPOAgent:
         # Clear memory after update
         self.memory = {k: [] for k in self.memory}
         print("PPO.train Update finished. Final loss:", final_loss)
-        
-
         return final_loss, actor_loss, critic_loss, entropy
 
     def save_model(self, filepath):
