@@ -360,7 +360,6 @@ class DriverAssistanceSim:
         return distances[0], distances[1], distances[2], distances[3]
 
     def beam_sensor(self, robot_pos, z_offset=0.1, max_range=5):
-        # r_pos = [robot_pos[0], robot_pos[1], z_offset]
         _, orn = p.getBasePositionAndOrientation(self.robot_id)
         yaw = p.getEulerFromQuaternion(orn)[2]
         fx = math.cos(yaw)
@@ -516,58 +515,57 @@ class DriverAssistanceSim:
     def spawn_cars(self, car_count):
         for _ in range(car_count):
             self.initialize_car(new_car=True)
-    
-    def plot_metrics(self, episode_metrics, up):
-        ep = episode_metrics["episode"]
-        steps = episode_metrics["step"]
+
+    def smooth(self, data, w=10):
+        if len(data) < w:
+            return data
+        return np.convolve(data, np.ones(w)/w, mode='same')
+
+    def plot_metrics(self, metrics, up):
+        ep = metrics["episode"]
+        steps = metrics["step"]
+
+        fig, axs = plt.subplots(2, 2, figsize=(13, 8), sharex=True)
 
         fig, axs = plt.subplots(2, 2, figsize=(12,8))
         ax = axs[0,0]
-        axs[0,0].plot(ep, episode_metrics["actor_loss"], label="Actor Loss", color='blue')
+        axs[0,0].plot(ep, metrics["actor_loss"], label="Actor Loss", color='blue')
         axs[0,0].set_title("Actor Loss over Episodes")
         axs[0,0].set_xlabel("Episode")
         axs[0,0].set_ylabel("Loss")
         axs[0,0].grid(True)
 
-        ax2 = ax.twinx()
-        ax2.plot(ep, steps, linestyle='dotted', color='black', alpha=0.6, label="Steps")
-        ax2.legend(loc="upper right")
-
         ax = axs[0,1]
-        axs[0,1].plot(ep, episode_metrics["critic_loss"], label="Critic Loss", color='red')
+        axs[0,1].plot(ep, metrics["critic_loss"], label="Critic Loss", color='red')
         axs[0,1].set_title("Critic Loss over Episodes")
         axs[0,1].set_xlabel("Episode")
         axs[0,1].set_ylabel("Loss")
         axs[0,1].grid(True)
-        ax2 = ax.twinx()
-        ax2.plot(ep, steps, linestyle='dotted', color='black', alpha=0.6, label="Steps")
-        ax2.legend(loc="upper right")
 
         ax = axs[1,0]
-        axs[1,0].plot(ep, episode_metrics["entropy"], label="Entropy", color='green')
+        axs[1,0].plot(ep, metrics["entropy"], label="Entropy", color='green')
         axs[1,0].set_title("Policy Entropy over Episodes")
         axs[1,0].set_xlabel("Episode")
         axs[1,0].set_ylabel("Entropy")
         axs[1,0].grid(True)
-        ax2 = ax.twinx()
-        ax2.plot(ep, steps, linestyle='dotted', color='black', alpha=0.6, label="Steps")
-        ax2.legend(loc="upper right")
 
-        if episode_metrics["reward"]:
-            ax = axs[1,1]
-            axs[1,1].plot(ep, episode_metrics["reward"], label="Reward", color='purple')
-            axs[1,1].set_title("Cumulative Reward over Episodes")
-            axs[1,1].set_xlabel("Episode")
-            axs[1,1].set_ylabel("Reward")
-            axs[1,1].grid(True)
-            ax2 = ax.twinx()
-            ax2.plot(ep, steps, linestyle='dotted', color='black', alpha=0.6, label="Steps")
-            ax2.legend(loc="upper right")
+        axs[1,1].plot(ep, self.smooth(metrics["reward"]), linewidth=1.5, color='purple', label="Reward")
+        axs[1,1].set_title("Reward & Steps")
+        axs[1,1].set_ylabel("Reward")
+        axs[1,1].grid(True)
+
+        ax2 = axs[1,1].twinx()
+        ax2.plot(ep, self.smooth(steps), linestyle="dotted", alpha=0.6, label="Steps")
+        ax2.set_ylabel("Steps")
+        ax2.set_ylim(0, max(steps))  
+        for ax in axs.flat:
+            ax.label_outer()
 
         plt.tight_layout()
+
         filename = f"metrics_{up}.png"
         plt.savefig(filename, dpi=200)
-    
+
     def plot_trajectory(self, ep, steps, reward, loss, actor_loss, critic_loss, entropy):
         plt.figure(figsize=(10, 4))
         traj = np.array([(x, y) for (x, y, a) in self.trajectory])
@@ -608,7 +606,6 @@ class DriverAssistanceSim:
             }
 
         for ep in range(EPISODES):
-            # print("\n==== EPISODE", ep, "====")
             episode_reward = 0
             self.reset()
             terminal_step = self.num_steps
@@ -711,9 +708,9 @@ class DriverAssistanceSim:
                 agent.save_model("./ppo_driver_model.pth")
 
         print("All Episodes Completed: reward list - ", reward_list)
-            
+
+    # Testing trained PPO agent 
     def test_model(self, agent, total_episodes):
-        print("=================Testing trained PPO agent============================")
         agent.load_model("./ppo_driver_model.pth")
         self.run(agent=agent, EPISODES=total_episodes, is_training=False )
 
